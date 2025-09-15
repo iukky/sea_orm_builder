@@ -1,0 +1,9 @@
+[package]
+name = "sea_orm_builder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sea-orm = "1.1.15"
+sea_orm_builder_derive = { path = "./sea_orm_builder_derive", version = "0.1.0" }
+thiserror = "2.0.16"
