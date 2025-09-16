@@ -60,16 +60,16 @@ pub fn build_select(
     let mut move_fields = vec![];
     for f in fields {
         for op in &f.perms.select_where {
-            let (s, i, m, a) = gen_where_pieces(&f.ident, &f.ty, op);
+            let op_str = op.as_str();
+            let (s, i, m, a) = gen_where_pieces(&f.ident, &f.ty, op_str);
             storages.push(s);
             inits.push(i);
             methods.push(m);
             accessors.push(a);
             let field_name = f.ident.to_string();
-            let op_norm = normalize_op(op);
-            let storage_ident = format_ident!("{}_{}_val", field_name, op_norm);
+            let storage_ident = format_ident!("{}_{}_val", field_name, op_str);
             move_fields.push(quote! { #storage_ident: self.#storage_ident });
-            params_accessors.push(gen_params_accessors(&f.ident, &f.ty, op));
+            params_accessors.push(gen_params_accessors(&f.ident, &f.ty, op_str));
         }
     }
     let st = quote! {
@@ -150,16 +150,16 @@ pub fn build_update(
     let mut move_fields = vec![];
     for f in fields {
         for op in &f.perms.update_where {
-            let (s, i, m, a) = gen_where_pieces(&f.ident, &f.ty, op);
+            let op_str = op.as_str();
+            let (s, i, m, a) = gen_where_pieces(&f.ident, &f.ty, op_str);
             storages.push(s);
             inits.push(i);
             where_methods.push(m);
             accessors.push(a);
             let field_name = f.ident.to_string();
-            let op_norm = normalize_op(op);
-            let storage_ident = format_ident!("{}_{}_val", field_name, op_norm);
+            let storage_ident = format_ident!("{}_{}_val", field_name, op_str);
             move_fields.push(quote! { #storage_ident: self.#storage_ident });
-            params_accessors.push(gen_params_accessors(&f.ident, &f.ty, op));
+            params_accessors.push(gen_params_accessors(&f.ident, &f.ty, op_str));
         }
         if f.perms.update_set {
             set_methods.push(gen_set_method(&f.ident, &f.ty));
@@ -220,16 +220,16 @@ pub fn build_delete(
     let mut move_fields = vec![];
     for f in fields {
         for op in &f.perms.delete_where {
-            let (s, i, m, a) = gen_where_pieces(&f.ident, &f.ty, op);
+            let op_str = op.as_str();
+            let (s, i, m, a) = gen_where_pieces(&f.ident, &f.ty, op_str);
             storages.push(s);
             inits.push(i);
             where_methods.push(m);
             accessors.push(a);
             let field_name = f.ident.to_string();
-            let op_norm = normalize_op(op);
-            let storage_ident = format_ident!("{}_{}_val", field_name, op_norm);
+            let storage_ident = format_ident!("{}_{}_val", field_name, op_str);
             move_fields.push(quote! { #storage_ident: self.#storage_ident });
-            params_accessors.push(gen_params_accessors(&f.ident, &f.ty, op));
+            params_accessors.push(gen_params_accessors(&f.ident, &f.ty, op_str));
         }
     }
     let st = quote! {
@@ -271,14 +271,6 @@ pub fn build_delete(
     (quote! { #st #params_struct }, imp)
 }
 
-fn normalize_op(op: &str) -> &str {
-    if op == "isin" {
-        "in"
-    } else {
-        op
-    }
-}
-
 fn gen_where_pieces(
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
@@ -289,29 +281,28 @@ fn gen_where_pieces(
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
 ) {
-    let op_norm = normalize_op(op);
     let field_name = field_ident.to_string();
-    let method_ident = match op_norm {
+    let method_ident = match op {
         "in" => format_ident!("{}_in", field_name),
         o => format_ident!("{}_{}", field_name, o),
     };
     let column_variant = format_ident!("{}", to_camel(&field_name));
-    let storage_ident = format_ident!("{}_{}_val", field_name, op_norm);
+    let storage_ident = format_ident!("{}_{}_val", field_name, op);
 
-    match op_norm {
+    match op {
         "eq" | "ne" | "lt" | "lte" | "gt" | "gte" | "like" | "ilike" => {
-            let op_ident = format_ident!("{}", op_norm);
+            let op_ident = format_ident!("{}", op);
             let storage = quote! { #storage_ident: ::std::option::Option<#field_ty> };
             let init = quote! { #storage_ident: ::std::option::Option::None };
-            let is_ident = format_ident!("is_{}_{}", field_name, op_norm);
-            let get_ident = format_ident!("get_{}_{}", field_name, op_norm);
+            let is_ident = format_ident!("is_{}_{}", field_name, op);
+            let get_ident = format_ident!("get_{}_{}", field_name, op);
             let method = quote! {
                 pub fn #method_ident<V: ::sea_orm_builder::IntoField<#field_ty>>(mut self, v: V) -> Self where #field_ty: ::std::clone::Clone {
                     let vv: #field_ty = v.into_field();
                     self.#storage_ident = ::std::option::Option::Some(vv.clone());
                     self.statement = self.statement.filter(Column::#column_variant.#op_ident(vv));
                     self.has_where = true;
-                    self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: #op_norm, value: ::sea_orm_builder::WhereValue::Single(format!("{:?}", &self.#storage_ident)) });
+                    self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: #op, value: ::sea_orm_builder::WhereValue::Single(format!("{:?}", &self.#storage_ident)) });
                     self
                 }
             };
@@ -333,7 +324,29 @@ fn gen_where_pieces(
                     self.#storage_ident = ::std::option::Option::Some(vec_tmp.clone());
                     self.statement = self.statement.filter(Column::#column_variant.is_in(vec_tmp));
                     self.has_where = true;
-                    self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: "in", value: ::sea_orm_builder::WhereValue::List(self.#storage_ident.as_ref().unwrap().iter().map(|x| format!("{:?}", x)).collect()) });
+                    self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: #op, value: ::sea_orm_builder::WhereValue::List(self.#storage_ident.as_ref().unwrap().iter().map(|x| format!("{:?}", x)).collect()) });
+                    self
+                }
+            };
+            let accessor = quote! {
+                pub fn #is_ident(&self) -> bool { self.#storage_ident.is_some() }
+                pub fn #get_ident(&self) -> ::std::option::Option<&[#field_ty]> { self.#storage_ident.as_deref().map(|v| &v[..]) }
+            };
+            (storage, init, method, accessor)
+        }
+        "not_in" => {
+            let storage =
+                quote! { #storage_ident: ::std::option::Option<::std::vec::Vec<#field_ty>> };
+            let init = quote! { #storage_ident: ::std::option::Option::None };
+            let is_ident = format_ident!("is_{}_not_in", field_name);
+            let get_ident = format_ident!("get_{}_not_in", field_name);
+            let method = quote! {
+                pub fn #method_ident<V: ::sea_orm_builder::IntoField<#field_ty>, I: IntoIterator<Item = V>>(mut self, iter: I) -> Self where #field_ty: ::std::clone::Clone {
+                    let vec_tmp: ::std::vec::Vec<#field_ty> = iter.into_iter().map(|x| x.into_field()).collect();
+                    self.#storage_ident = ::std::option::Option::Some(vec_tmp.clone());
+                    self.statement = self.statement.filter(Column::#column_variant.is_not_in(vec_tmp));
+                    self.has_where = true;
+                    self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: #op, value: ::sea_orm_builder::WhereValue::List(self.#storage_ident.as_ref().unwrap().iter().map(|x| format!("{:?}", x)).collect()) });
                     self
                 }
             };
@@ -356,7 +369,7 @@ fn gen_where_pieces(
                     self.statement = self.statement.filter(Column::#column_variant.between(a, b));
                     self.has_where = true;
                     if let ::std::option::Option::Some((ref sa, ref sb)) = self.#storage_ident {
-                        self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: "between", value: ::sea_orm_builder::WhereValue::Range { start: format!("{:?}", sa), end: format!("{:?}", sb) } });
+                        self.where_params.push(::sea_orm_builder::WhereParam { field: #field_name, op: #op, value: ::sea_orm_builder::WhereValue::Range { start: format!("{:?}", sa), end: format!("{:?}", sb) } });
                     }
                     self
                 }
@@ -397,13 +410,12 @@ fn gen_params_accessors(
     field_ty: &syn::Type,
     op: &str,
 ) -> proc_macro2::TokenStream {
-    let op_norm = normalize_op(op);
     let field_name = field_ident.to_string();
-    let storage_ident = format_ident!("{}_{}_val", field_name, op_norm);
-    match op_norm {
+    let storage_ident = format_ident!("{}_{}_val", field_name, op);
+    match op {
         "eq" | "ne" | "lt" | "lte" | "gt" | "gte" | "like" | "ilike" => {
-            let is_ident = format_ident!("is_{}_{}", field_name, op_norm);
-            let get_ident = format_ident!("get_{}_{}", field_name, op_norm);
+            let is_ident = format_ident!("is_{}_{}", field_name, op);
+            let get_ident = format_ident!("get_{}_{}", field_name, op);
             quote! {
                 pub fn #is_ident(&self) -> bool { self.#storage_ident.is_some() }
                 pub fn #get_ident(&self) -> ::std::option::Option<&#field_ty> { self.#storage_ident.as_ref() }
@@ -412,6 +424,14 @@ fn gen_params_accessors(
         "in" => {
             let is_ident = format_ident!("is_{}_in", field_name);
             let get_ident = format_ident!("get_{}_in", field_name);
+            quote! {
+                pub fn #is_ident(&self) -> bool { self.#storage_ident.is_some() }
+                pub fn #get_ident(&self) -> ::std::option::Option<&[#field_ty]> { self.#storage_ident.as_deref().map(|v| &v[..]) }
+            }
+        }
+        "not_in" => {
+            let is_ident = format_ident!("is_{}_not_in", field_name);
+            let get_ident = format_ident!("get_{}_not_in", field_name);
             quote! {
                 pub fn #is_ident(&self) -> bool { self.#storage_ident.is_some() }
                 pub fn #get_ident(&self) -> ::std::option::Option<&[#field_ty]> { self.#storage_ident.as_deref().map(|v| &v[..]) }
