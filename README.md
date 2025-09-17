@@ -35,6 +35,17 @@ assert!(params.is_id_eq());
 assert_eq!(params.get_name_like(), Some(&"foo".to_string()));
 ```
 
+## Query Condition Actions
+
+The derive macros recognize the following `where(...)` operations when parsing `#[sea_builder(...)]` attributes. Each action generates typed builder methods (for example, `id_eq`, `name_like`).
+
+- `eq` / `ne` – equality and inequality (`Column::eq`, `Column::ne`)
+- `lt` / `lte` – less-than and less-than-or-equal (`Column::lt`, `Column::lte`)
+- `gt` / `gte` – greater-than and greater-than-or-equal (`Column::gt`, `Column::gte`)
+- `like` / `ilike` – pattern matches; `ilike` is case-insensitive where supported (`Column::like`, `Column::ilike`)
+- `in` / `isin` – membership check; both keywords map to the same generated `<field>_in` method (`Column::is_in`)
+- `between` – inclusive range check that accepts two arguments and maps to `Column::between`
+
 ## Regeneration Prompt
 
 Paste the following prompt into Codex CLI next time you want to (re)generate both crates. It restates the requirements and expected deliverables.
